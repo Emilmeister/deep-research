@@ -1,0 +1,6 @@
+marker-pdf
+torch
+fastapi
+uvicorn
+requests
+pydantic

@@ -5,3 +5,22 @@ services:
     ports:
       - 6006:6006
       - 4317:4317
+  searxng:
+    container_name: searxng
+    image: searxng/searxng
+    volumes:
+      - ./searxng:/etc/searxng
+    ports:
+      - 8080:8080
+#  pdf-parser:
+#    container_name: pdf-parser
+#    build:
+#      dockerfile: pdf_recognizer/Dockerfile
+#    ports:
+#      - 8000:8000
+#    deploy:
+#      resources:
+#        reservations:
+#          devices:
+#            - capabilities: [gpu]
+#    entrypoint: ['python', 'main.py']

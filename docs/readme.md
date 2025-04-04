@@ -114,6 +114,10 @@ Open Deep Research от huggingface выделяется на фоне друг�
 ![pipline.png](images/pipline.png)
 
 
+# Установка
+
+разрешить докеру использовать гпу sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+
 
 
 

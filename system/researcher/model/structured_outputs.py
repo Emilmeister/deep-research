@@ -13,6 +13,10 @@ class TableOfConcepts(BaseModel):
     title: str
     chapters: list[Chapter]
 
+    def print(self):
+        chapters = "\n".join([f"## {chapter.chapter_name}\n{chapter.chapter_description}" for chapter in self.chapters])
+        return f"# {self.title}\n{chapters}"
+
 
 class TableOfConceptsGuardrail(BaseModel):
     explanation: str
@@ -24,15 +28,20 @@ class FollowUpQuestions(BaseModel):
 
 
 class InterestingUrl(BaseModel):
-    url: str
+    web_page_url: str
     why_interested: str
     question_and_url_relevant_score: int = Field(..., ge=0, le=10)
 
 
 class SummaryWithInterestingUrls(BaseModel):
-    is_this_page_relevant_to_question: bool
     summary: str
-    interesting_urls: list[InterestingUrl] = []
+    relevance_score: int = Field(..., ge=0, le=10)
+    interesting_web_page_urls: list[InterestingUrl] = []
+
+
+class RelevanceScore(BaseModel):
+    reasoning: str
+    relevance_score: int = Field(..., ge=0, le=10)
 
 
 class ChapterText(BaseModel):
@@ -49,3 +58,7 @@ class NeedRewriteTableOfConcepts(BaseModel):
     need_rewrite: bool
     explanation: str
     new_table_of_concepts: Optional[TableOfConcepts]
+
+
+class SearchWords(BaseModel):
+    words: list[str]
