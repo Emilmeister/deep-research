@@ -2,5 +2,6 @@ marker-pdf
 torch
 fastapi
 uvicorn
-requests
+aiofiles
+aiohttp
 pydantic
