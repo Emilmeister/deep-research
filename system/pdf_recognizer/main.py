@@ -2,7 +2,8 @@ import os
 import tempfile
 import uuid
 
-import requests
+import aiofiles
+import aiohttp
 from fastapi import FastAPI, HTTPException
 from marker.converters.pdf import PdfConverter
 from marker.models import create_model_dict
@@ -22,15 +23,20 @@ class TextOutput(BaseModel):
     text: str
 
 
-def download_pdf(url: str, temp_dir: str) -> str:
+async def download_pdf_async(url: str, temp_dir: str) -> str:
     try:
-        response = requests.get(url)
-        response.raise_for_status()
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    raise HTTPException(status_code=400, detail=f"Ошибка загрузки PDF: статус {response.status}")
 
-        file_path = os.path.join(temp_dir, f"{str(uuid.uuid4())}.pdf")
-        with open(file_path, "wb") as f:
-            f.write(response.content)
-        return file_path
+                content = await response.read()
+
+                file_path = os.path.join(temp_dir, f"{str(uuid.uuid4())}.pdf")
+                async with aiofiles.open(file_path, "wb") as f:
+                    await f.write(content)
+
+                return file_path
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Ошибка загрузки PDF: {str(e)}")
 
@@ -40,7 +46,7 @@ async def extract_text_from_pdf(inp: URLInput) -> TextOutput:
     with tempfile.TemporaryDirectory() as temp_dir:
         try:
             print(f"processing url={inp.url}")
-            pdf_path = download_pdf(inp.url, temp_dir)
+            pdf_path = await download_pdf_async(inp.url, temp_dir)
 
             rendered = converter(pdf_path)
             text, _, _ = text_from_rendered(rendered)
