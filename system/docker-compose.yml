@@ -38,7 +38,7 @@ services:
       - OPENAI_API_URL=http://...:11434/v1
       - DEFAULT_MODEL=qwen2.5:32b
       - SEARXNG_SEARCH_URL=http://searxng:8080/search
-      - PARSE_PDF_URL=http://...:8000/extract-text
+      - PARSE_PDF_URL=http://pdf-parser:8000/extract-text
       - MAX_CONTENT_LEN=200000
       - GRADIO_SERVER_PORT=7860
     entrypoint: ['python', '-u', 'main.py']
