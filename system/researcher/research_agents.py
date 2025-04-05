@@ -1,9 +1,8 @@
 from agents import Agent
-from agents.agent import StopAtTools
 
-from system.researcher.model.structured_outputs import TableOfConcepts, TableOfConceptsGuardrail, FollowUpQuestions, NewHypothesis, \
+from structured_outputs import TableOfConcepts, TableOfConceptsGuardrail, FollowUpQuestions, NewHypothesis, \
     ChapterText
-from system.researcher.tools import search_web_tool, final_answer_table_of_concepts
+from tools import search_web_tool
 
 
 class TableOfConceptsAgent(Agent):
@@ -11,12 +10,26 @@ class TableOfConceptsAgent(Agent):
         super().__init__(
             name="Table of concepts agent",
             instructions="""
-Помогите пользователю создать оглавление для его исследовательской работы.
+Помогите пользователю создать оглавление для его исследовательской работы. на 
 Напишите ответ в формате json.
 Для каждой главы напишите chapter_name, chapter_description, need_research.
-Например, для заключения и введения исследование need_research=False
+need_research показывает, нужен ли поиск в интернете для того чтобы написать главу.
+Почти для всех глав need_research=True, кроме как для тех которые пишутся уже после основного текста исследования.
+Например, для заключения и введения need_research=False
             """,
             output_type=TableOfConcepts
+        )
+
+
+class TableOfConceptsSearchAgent(Agent):
+    def __init__(self):
+        super().__init__(
+            name="Table of concepts search agent",
+            instructions="""
+Помогите пользователю создать оглавление для его исследовательской работы.
+Воспользуйся поиском в интернете для составления более релевантного оглавления.
+            """,
+            tools=[search_web_tool]
         )
 
 

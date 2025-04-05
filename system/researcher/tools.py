@@ -7,12 +7,12 @@ import re
 from agents import Agent
 from requests import RequestException
 
-from system.researcher.model.structured_outputs import SummaryWithInterestingUrls, RelevanceScore, SearchWords, \
+from structured_outputs import SummaryWithInterestingUrls, RelevanceScore, SearchWords, \
     TableOfConcepts
 import arxiv
 
 SEARXNG_SEARCH_URL = os.getenv("SEARXNG_SEARCH_URL", "http://localhost:8080/search")
-PARSE_PDF_URL = os.getenv("PARSE_PDF_URL", "http://192.168.3.14:8000/extract-text")
+PARSE_PDF_URL = os.getenv("PARSE_PDF_URL", "http://localhost:8000/extract-text")
 MAX_CONTENT_LEN = int(os.getenv("MAX_CONTENT_LEN", 200000))
 
 client = arxiv.Client()

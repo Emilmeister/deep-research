@@ -1,0 +1,12 @@
+openai-agents
+pydantic~=2.11.1
+duckduckgo-search
+beautifulsoup4
+arize-phoenix-otel
+openai~=1.70.0
+gradio
+requests
+markdownify
+openinference-instrumentation-openai
+openinference-instrumentation-openai-agents
+arxiv

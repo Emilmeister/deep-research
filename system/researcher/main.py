@@ -1,33 +1,42 @@
+import os
+import ssl
+import uuid
 from collections import defaultdict
 
+import gradio as gr
+from agents import set_default_openai_client, set_default_openai_api, set_trace_processors, Runner, input_guardrail, \
+    GuardrailFunctionOutput, trace
 from agents.models import openai_provider
 from gradio import ChatMessage
 from openai import AsyncOpenAI
-from agents import set_default_openai_client, set_default_openai_api, set_trace_processors, Runner, input_guardrail, \
-    GuardrailFunctionOutput, InputGuardrailTripwireTriggered, trace
 from openai.types.responses import EasyInputMessageParam
-
 from phoenix.otel import register
 
-from system.researcher.model.structured_outputs import TableOfConcepts, TableOfConceptsGuardrail, FollowUpQuestions, NewHypothesis, \
+from research_agents import TableOfConceptsAgent, TableOfConceptsGuardrailAgent, FollowUpQuestionsAgent, \
+    HyposGeneratingAgent, ChapterEditorAgent, ChapterEditorSummaryAgent, TableOfConceptsSearchAgent
+from structured_outputs import TableOfConcepts, TableOfConceptsGuardrail, FollowUpQuestions, NewHypothesis, \
     ChapterText
-from system.researcher.research_agents import TableOfConceptsAgent, TableOfConceptsGuardrailAgent, FollowUpQuestionsAgent, \
-    HyposGeneratingAgent, ChapterEditorAgent, ChapterEditorSummaryAgent
-import gradio as gr
+from tools import search_web, search_arxiv_relevant_pdfs_and_summarize
 
-from system.researcher.tools import search_web, search_arxiv_relevant_pdfs_and_summarize
+ssl._create_default_https_context = ssl._create_unverified_context
+
+PHOENIX_TRACE_URL = os.getenv("PHOENIX_TRACE_URL", "http://localhost:6006/v1/traces")
+PHOENIX_PROJECT_NAME = os.getenv("PHOENIX_PROJECT_NAME", "deep-research")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY",  "1")
+OPENAI_API_URL = os.getenv("OPENAI_API_URL", "http://localhost:11434/v1")
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen2.5:32b")
 
 # configure the Phoenix tracer
 set_trace_processors([])
 tracer_provider = register(
-    project_name="deep-research",  # Default is 'default'
-    endpoint='http://localhost:6006/v1/traces',
+    project_name=PHOENIX_PROJECT_NAME,  # Default is 'default'
+    endpoint=PHOENIX_TRACE_URL,
     auto_instrument=True
 )
 
-set_default_openai_client(AsyncOpenAI(base_url="http://94.41.23.12:11434/v1", api_key="1", timeout=60 * 5))
+set_default_openai_client(AsyncOpenAI(base_url=OPENAI_API_URL, api_key=OPENAI_API_KEY, timeout=60 * 5))
 set_default_openai_api('chat_completions')
-openai_provider.DEFAULT_MODEL = 'aya-expanse:32b'
+openai_provider.DEFAULT_MODEL = DEFAULT_MODEL
 
 table_of_concepts_guardrail_agent = TableOfConceptsGuardrailAgent()
 
@@ -49,11 +58,11 @@ async def table_of_concepts_guardrail(ctx, agent, input):
 
 
 table_of_concepts_agent = TableOfConceptsAgent()
+table_of_concepts_search = TableOfConceptsSearchAgent()
 follow_up_questions_agent = FollowUpQuestionsAgent()
 hypos_agent = HyposGeneratingAgent()
 chapter_editor_agent = ChapterEditorAgent()
 chapter_editor_summary_agent = ChapterEditorSummaryAgent()
-table_of_concepts_agent.input_guardrails.append(table_of_concepts_guardrail)
 
 
 def to_openai_format(message, history):
@@ -84,18 +93,20 @@ def print_used_urls(urls):
     return output
 
 
-async def chat(message, history, table_of_concepts_json, breadth_of_research, depth_of_research, relevancy_pass_rate, num_search_urls, num_search_arxiv, progress=gr.Progress()):
+async def chat(message, start_research, history, table_of_concepts_json, breadth_of_research, depth_of_research, relevancy_pass_rate, num_search_urls, num_search_arxiv, progress=gr.Progress()):
     history = to_openai_format(message, history)
     table_of_concepts = None
     if len(table_of_concepts_json) > 0:
         table_of_concepts = TableOfConcepts.model_validate_json(table_of_concepts_json)
-    try:
-        result = await Runner.run(table_of_concepts_agent, history)
-        table_of_concepts = TableOfConcepts.model_validate(result.final_output)
-        history.append(EasyInputMessageParam(role="assistant", content="Подходит ли вам такое содержание? Что мне нужно поменять?\n\n" + table_of_concepts.print()))
-        return message, to_gradio_format(history), table_of_concepts.model_dump_json()
-    except InputGuardrailTripwireTriggered as e:
-        with trace("Research workflow"):
+    if not start_research:
+        with trace("Table of concepts workflow", group_id=str(uuid.uuid4())):
+            result = await Runner.run(table_of_concepts_search, history)
+            result = await Runner.run(table_of_concepts_agent,  history + [EasyInputMessageParam(role="assistant", content=result.final_output), EasyInputMessageParam(role="user", content="перепиши в json")])
+            table_of_concepts = TableOfConcepts.model_validate(result.final_output)
+            history.append(EasyInputMessageParam(role="assistant", content="Подходит ли вам такое содержание? Что мне нужно поменять?\n\n" + table_of_concepts.print()))
+        return message, start_research, to_gradio_format(history), table_of_concepts.model_dump_json()
+    else:
+        with trace("Research workflow", group_id=str(uuid.uuid4())):
             # Оглавление готово
             done_chapters = {}
             dic_visited_urls = defaultdict(list)
@@ -162,7 +173,7 @@ async def chat(message, history, table_of_concepts_json, breadth_of_research, de
             final_research = get_research(table_of_concepts, dic_visited_urls, done_chapters, final=True)
             print("\n\n\n\n\n\n", final_research, '\n\n\n\n\n\n')
             history.append(EasyInputMessageParam(role="assistant", content=final_research))
-            return "", to_gradio_format(history), table_of_concepts.model_dump_json()
+        return "", start_research, to_gradio_format(history), table_of_concepts.model_dump_json()
 
 
 def get_research(table_of_concepts, dic_visited_urls, done_chapters, final=False):
@@ -179,17 +190,19 @@ with gr.Blocks() as app:
             chatbot = gr.Chatbot(type="messages", height='60vh', show_copy_button=True)
             msg = gr.Textbox(lines=5)
             table_of_concepts_box = gr.Textbox(visible=False)
-            btn = gr.Button()
+            with gr.Row(scale=5):
+                btn = gr.Button()
+                checkbox = gr.Checkbox(value=False, label="Начать исследование")
         with gr.Column(scale=1):
-            breadth_of_research = gr.Slider(maximum=10, minimum=1, value=2, step=1, label='breadth_of_research')
-            depth_of_research = gr.Slider(maximum=10, minimum=1, value=2, step=1, label='depth_of_research')
-            relevancy_pass_rate = gr.Slider(maximum=10, minimum=1, value=7, step=1, label='relevancy_pass_rate')
-            num_search_urls = gr.Slider(maximum=10, minimum=1, value=5, step=1, label='num_search_pages')
-            num_search_arxiv = gr.Slider(maximum=10, minimum=1, value=3, step=1, label='num_search_arxiv')
+            breadth_of_research = gr.Slider(maximum=10, minimum=1, value=2, step=1, label='Количество вопросов для поиска в интернете в рамках главы')
+            depth_of_research = gr.Slider(maximum=10, minimum=1, value=2, step=1, label='Количество циклов генерирования дополнительных вопросов и гипотез в рамках главы')
+            relevancy_pass_rate = gr.Slider(maximum=10, minimum=1, value=7, step=1, label='Порог релевантности при выборе решении о переходе на другие страницы')
+            num_search_urls = gr.Slider(maximum=10, minimum=1, value=5, step=1, label='Количество анализируемых страниц при поисковой выдаче')
+            num_search_arxiv = gr.Slider(maximum=10, minimum=1, value=3, step=1, label='Количество анализируемых страниц при поиске в arxiv')
         btn.click(chat,
-                   [msg, chatbot, table_of_concepts_box, breadth_of_research, depth_of_research, relevancy_pass_rate, num_search_urls, num_search_arxiv],
-                   [msg, chatbot, table_of_concepts_box],
+                   [msg, checkbox, chatbot, table_of_concepts_box, breadth_of_research, depth_of_research, relevancy_pass_rate, num_search_urls, num_search_arxiv],
+                   [msg, checkbox, chatbot, table_of_concepts_box],
                    show_progress_on=msg
                    )
 
-app.launch()
+app.launch(server_name="0.0.0.0")
