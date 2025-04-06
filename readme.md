@@ -26,6 +26,9 @@
 
 #### [Пример того как система справляется с исследованием (click)](https://github.com/Emilmeister/deep-research/blob/master/docs/examples/gbm_research.md)
 
+## Пример трассировки
+![trace.png](docs/examples/trace.png)
+
 ## Развертывание системы
 
 ### Требования
