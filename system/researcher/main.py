@@ -38,24 +38,6 @@ set_default_openai_client(AsyncOpenAI(base_url=OPENAI_API_URL, api_key=OPENAI_AP
 set_default_openai_api('chat_completions')
 openai_provider.DEFAULT_MODEL = DEFAULT_MODEL
 
-table_of_concepts_guardrail_agent = TableOfConceptsGuardrailAgent()
-
-
-@input_guardrail
-async def table_of_concepts_guardrail(ctx, agent, input):
-    if len(input) > 1:
-        result = await Runner.run(table_of_concepts_guardrail_agent, input, context=ctx.context)
-        output = TableOfConceptsGuardrail.model_validate(result.final_output)
-        return GuardrailFunctionOutput(
-            output_info=output.explanation,
-            tripwire_triggered=output.satisfied,
-        )
-    else:
-        return GuardrailFunctionOutput(
-            output_info="len < 1",
-            tripwire_triggered=False,
-        )
-
 
 table_of_concepts_agent = TableOfConceptsAgent()
 table_of_concepts_search = TableOfConceptsSearchAgent()
