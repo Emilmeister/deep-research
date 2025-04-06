@@ -196,9 +196,9 @@ with gr.Blocks() as app:
         with gr.Column(scale=1):
             breadth_of_research = gr.Slider(maximum=10, minimum=1, value=2, step=1, label='Количество вопросов для поиска в интернете в рамках главы')
             depth_of_research = gr.Slider(maximum=10, minimum=1, value=2, step=1, label='Количество циклов генерирования дополнительных вопросов и гипотез в рамках главы')
-            relevancy_pass_rate = gr.Slider(maximum=10, minimum=1, value=7, step=1, label='Порог релевантности при выборе решении о переходе на другие страницы')
-            num_search_urls = gr.Slider(maximum=10, minimum=1, value=5, step=1, label='Количество анализируемых страниц при поисковой выдаче')
-            num_search_arxiv = gr.Slider(maximum=10, minimum=1, value=3, step=1, label='Количество анализируемых страниц при поиске в arxiv')
+            relevancy_pass_rate = gr.Slider(maximum=10, minimum=0, value=7, step=1, label='Порог релевантности при выборе решении о переходе на другие страницы')
+            num_search_urls = gr.Slider(maximum=10, minimum=0, value=5, step=1, label='Количество анализируемых страниц при поисковой выдаче')
+            num_search_arxiv = gr.Slider(maximum=10, minimum=0, value=3, step=1, label='Количество анализируемых страниц при поиске в arxiv')
         btn.click(chat,
                    [msg, checkbox, chatbot, table_of_concepts_box, breadth_of_research, depth_of_research, relevancy_pass_rate, num_search_urls, num_search_arxiv],
                    [msg, checkbox, chatbot, table_of_concepts_box],

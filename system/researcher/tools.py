@@ -37,6 +37,8 @@ async def search_web(query: str, relevancy_pass_rate: int, num_search: int, visi
         Returns:
             Поисковая выдача
     """
+    if num_search == 0:
+        return
 
     results = searxng_search(keywords=query, max_results=num_search)
     summaries = []
@@ -135,6 +137,9 @@ async def search_arxiv_relevant_pdfs_and_summarize(question: str, relevancy_pass
             """,
         output_type=SearchWords
     )
+    if num_search == 0:
+        return
+
     agent_result = await Runner.run(question_to_words_agent, [])
     words = SearchWords.model_validate(agent_result.final_output).words
     articles = await search_arxiv_relevant_pdfs(words, question, num_search)
