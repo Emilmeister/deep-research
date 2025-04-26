@@ -86,7 +86,7 @@ async def visit_webpage_and_summarize(url: str, query: str):
         content = None
 
         if response.headers['content-type'] == 'application/pdf':
-            content = parse_pdf(url)
+            content = await parse_pdf(url)
         else:
             markdown_content = markdownify(response.text).strip()
             content = re.sub(r"\n{3,}", "\n\n", markdown_content)
@@ -271,7 +271,10 @@ async def summarize_content(query: str, url: str, content: str, source: str) -> 
         output_type=SummaryWithInterestingUrls
     )
     result = await Runner.run(search_summary_agent, [])
-    return SummaryWithInterestingUrls.model_validate(result.final_output)
+    result = SummaryWithInterestingUrls.model_validate(result.final_output)
+    if result.interesting_web_page_urls is None:
+        result.interesting_web_page_urls = []
+    return result
 
 
 async def summarize_texts(query: str, summaries: list[SummaryWithInterestingUrls]):

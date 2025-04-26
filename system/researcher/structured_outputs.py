@@ -1,6 +1,22 @@
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, Field
+
+
+class RelevanceScoreNumber(int, Enum):
+    """Оценка релевантности  (0-10)."""
+    RELEVANCE_0 = 0
+    RELEVANCE_1 = 1
+    RELEVANCE_2 = 2
+    RELEVANCE_3 = 3
+    RELEVANCE_4 = 4
+    RELEVANCE_5 = 5
+    RELEVANCE_6 = 6
+    RELEVANCE_7 = 7
+    RELEVANCE_8 = 8
+    RELEVANCE_9 = 9
+    RELEVANCE_10 = 10
 
 
 class Chapter(BaseModel):
@@ -30,18 +46,18 @@ class FollowUpQuestions(BaseModel):
 class InterestingUrl(BaseModel):
     web_page_url: str
     why_interested: str
-    question_and_url_relevant_score: int = Field(..., ge=0, le=10)
+    question_and_url_relevant_score: RelevanceScoreNumber
 
 
 class SummaryWithInterestingUrls(BaseModel):
     summary: str
-    relevance_score: int = Field(..., ge=0, le=10)
-    interesting_web_page_urls: list[InterestingUrl] = []
+    relevance_score: RelevanceScoreNumber
+    interesting_web_page_urls: list[InterestingUrl]
 
 
 class RelevanceScore(BaseModel):
     reasoning: str
-    relevance_score: int = Field(..., ge=0, le=10)
+    relevance_score: RelevanceScoreNumber
 
 
 class ChapterText(BaseModel):

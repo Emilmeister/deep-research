@@ -55,8 +55,9 @@ services:
       - PHOENIX_TRACE_URL=http://phoenix:6006/v1/traces
       - PHOENIX_PROJECT_NAME=deep-research
       - OPENAI_API_KEY=1
-      - OPENAI_API_URL=http://...:11434/v1
-      - DEFAULT_MODEL=qwen2.5:32b
+      - OPENAI_API_URL=https://openrouter.ai/api/v1
+      - DEFAULT_MODEL=google/gemini-2.0-flash-001
+      - TABLE_OF_CONCEPTS_MODEL=openai/gpt-4.1-mini
       - SEARXNG_SEARCH_URL=http://searxng:8080/search
       - PARSE_PDF_URL=http://pdf-parser:8000/extract-text
       - MAX_CONTENT_LEN=200000

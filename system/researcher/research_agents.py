@@ -6,30 +6,33 @@ from tools import search_web_tool
 
 
 class TableOfConceptsAgent(Agent):
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         super().__init__(
             name="Table of concepts agent",
             instructions="""
-Помогите пользователю создать оглавление для его исследовательской работы. на 
+Помогите пользователю создать оглавление для его исследовательской работы.
 Напишите ответ в формате json.
+В title напишите название исследовательской работы
 Для каждой главы напишите chapter_name, chapter_description, need_research.
 need_research показывает, нужен ли поиск в интернете для того чтобы написать главу.
 Почти для всех глав need_research=True, кроме как для тех которые пишутся уже после основного текста исследования.
 Например, для заключения и введения need_research=False
             """,
-            output_type=TableOfConcepts
+            output_type=TableOfConcepts,
+            *args, **kwargs
         )
 
 
 class TableOfConceptsSearchAgent(Agent):
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         super().__init__(
             name="Table of concepts search agent",
             instructions="""
 Помогите пользователю создать оглавление для его исследовательской работы.
 Воспользуйся поиском в интернете для составления более релевантного оглавления.
             """,
-            tools=[search_web_tool]
+            tools=[search_web_tool],
+            *args, **kwargs
         )
 
 
@@ -79,10 +82,15 @@ def follow_up_questions_agent_sys_prompt(context, agent):
 Хорошие ворпосы:
 Каковы перспективы развития направления supervised-learning?
 В чем заключается идея создания СССР?
+Каков принцип работы RAG?
+Что такое Mixture of Experts?
+Какие виды заболеваний не лечатся без хирургического вмешательства?
+Что делать человеку в условиях низкого сахара в крови, если он один в лесу?
 
 Плохие вопросы:
 Какие смыслы хочет раскрыть автор в ходе иследования?
-Какие принципы случше расскрть в заключенни текста?
+Какие принципы случше расскрыть в заключеннии текста?
+Как исследование должно раскрывать суть этой главы?
 
 **Формат вывода:**  
 - Список вопросов в логическом порядке, соответствующий структуре главы.  

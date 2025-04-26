@@ -23,8 +23,9 @@ ssl._create_default_https_context = ssl._create_unverified_context
 PHOENIX_TRACE_URL = os.getenv("PHOENIX_TRACE_URL", "http://localhost:6006/v1/traces")
 PHOENIX_PROJECT_NAME = os.getenv("PHOENIX_PROJECT_NAME", "deep-research")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY",  "1")
-OPENAI_API_URL = os.getenv("OPENAI_API_URL", "http://localhost:11434/v1")
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen2.5:32b")
+OPENAI_API_URL = os.getenv("OPENAI_API_URL", "https://openrouter.ai/api/v1")
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openai/gpt-4.1-mini")
+TABLE_OF_CONCEPTS_MODEL = os.getenv("TABLE_OF_CONCEPTS_MODEL", "openai/gpt-4.1-mini")
 
 # configure the Phoenix tracer
 set_trace_processors([])
@@ -39,8 +40,8 @@ set_default_openai_api('chat_completions')
 openai_provider.DEFAULT_MODEL = DEFAULT_MODEL
 
 
-table_of_concepts_agent = TableOfConceptsAgent()
-table_of_concepts_search = TableOfConceptsSearchAgent()
+table_of_concepts_agent = TableOfConceptsAgent(model=TABLE_OF_CONCEPTS_MODEL)
+table_of_concepts_search = TableOfConceptsSearchAgent(model=TABLE_OF_CONCEPTS_MODEL)
 follow_up_questions_agent = FollowUpQuestionsAgent()
 hypos_agent = HyposGeneratingAgent()
 chapter_editor_agent = ChapterEditorAgent()
@@ -115,15 +116,20 @@ async def chat(message, start_research, history, table_of_concepts_json, breadth
 
                         for i, question in enumerate(result.questions):
                             if i < breadth_of_research:
-                                progress(progress_counts/len(table_of_concepts.chapters), desc=f"Глава '{chapter.chapter_name}', ищем ответ на вопрос '{question}'. Вопрос {depth * breadth_of_research + i + 1} из {depth_of_research * breadth_of_research}")
+                                while True:
+                                    try:
+                                        progress(progress_counts/len(table_of_concepts.chapters), desc=f"Глава '{chapter.chapter_name}', ищем ответ на вопрос '{question}'. Вопрос {depth * breadth_of_research + i + 1} из {depth_of_research * breadth_of_research}")
 
-                                web_search = await search_web(question, relevancy_pass_rate, num_search_urls, visited_urls)
-                                if web_search is not None:
-                                    summaries.append(web_search)
+                                        web_search = await search_web(question, relevancy_pass_rate, num_search_urls, visited_urls)
+                                        arxiv_search = await search_arxiv_relevant_pdfs_and_summarize(question, relevancy_pass_rate, num_search_arxiv, visited_urls)
+                                        if web_search is not None:
+                                            summaries.append(web_search)
 
-                                arxiv_search = await search_arxiv_relevant_pdfs_and_summarize(question, relevancy_pass_rate, num_search_arxiv, visited_urls)
-                                if arxiv_search is not None:
-                                    summaries.append(arxiv_search)
+                                        if arxiv_search is not None:
+                                            summaries.append(arxiv_search)
+                                        break
+                                    except Exception as e:
+                                        print(f"Answering question: {str(e)}")
 
                         result = await Runner.run(hypos_agent, [], context=context)
                         result = NewHypothesis.model_validate(result.final_output)
@@ -171,7 +177,7 @@ with gr.Blocks() as app:
         with gr.Column(scale=5):
             chatbot = gr.Chatbot(type="messages", height='60vh', show_copy_button=True)
             msg = gr.Textbox(lines=5)
-            table_of_concepts_box = gr.Textbox(visible=False)
+            table_of_concepts_box = gr.Textbox(visible=True)
             with gr.Row(scale=5):
                 btn = gr.Button()
                 checkbox = gr.Checkbox(value=False, label="Начать исследование")
