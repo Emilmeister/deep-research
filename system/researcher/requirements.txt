@@ -10,3 +10,6 @@ markdownify
 openinference-instrumentation-openai
 openinference-instrumentation-openai-agents
 arxiv
+aiofiles
+aiohttp
+pymupdf

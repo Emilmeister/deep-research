@@ -11,8 +11,9 @@ from structured_outputs import SummaryWithInterestingUrls, RelevanceScore, Searc
     TableOfConcepts
 import arxiv
 
+from pdf_recognizer import extract_text_from_pdf, URLInput
+
 SEARXNG_SEARCH_URL = os.getenv("SEARXNG_SEARCH_URL", "http://localhost:8080/search")
-PARSE_PDF_URL = os.getenv("PARSE_PDF_URL", "http://localhost:8000/extract-text")
 MAX_CONTENT_LEN = int(os.getenv("MAX_CONTENT_LEN", 200000))
 
 client = arxiv.Client()
@@ -109,8 +110,8 @@ def searxng_search(keywords, max_results):
 
 async def parse_pdf(url: str):
     try:
-        response = requests.post(PARSE_PDF_URL, json={"url": url}, timeout=300)
-        return response.json()['text']
+        response = await extract_text_from_pdf(URLInput(url=url))
+        return response.text
     except Exception as e:
         print(f"An unexpected error occurred while parse_pdf {url}: {str(e)}")
 

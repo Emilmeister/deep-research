@@ -1,7 +1,0 @@
-marker-pdf
-torch
-fastapi
-uvicorn
-aiofiles
-aiohttp
-pydantic
