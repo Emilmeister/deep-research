@@ -2,19 +2,16 @@ import os
 import ssl
 import uuid
 from collections import defaultdict
-
-import gradio as gr
-from agents import set_default_openai_client, set_default_openai_api, set_trace_processors, Runner, input_guardrail, \
-    GuardrailFunctionOutput, trace
+from agents import set_default_openai_client, set_default_openai_api, set_trace_processors, Runner, trace
 from agents.models import openai_provider
 from gradio import ChatMessage
 from openai import AsyncOpenAI
 from openai.types.responses import EasyInputMessageParam
 from phoenix.otel import register
 
-from research_agents import TableOfConceptsAgent, TableOfConceptsGuardrailAgent, FollowUpQuestionsAgent, \
+from research_agents import TableOfConceptsAgent, FollowUpQuestionsAgent, \
     HyposGeneratingAgent, ChapterEditorAgent, ChapterEditorSummaryAgent, TableOfConceptsSearchAgent
-from structured_outputs import TableOfConcepts, TableOfConceptsGuardrail, FollowUpQuestions, NewHypothesis, \
+from structured_outputs import TableOfConcepts, FollowUpQuestions, NewHypothesis, \
     ChapterText
 from tools import search_web, search_arxiv_relevant_pdfs_and_summarize
 
@@ -76,92 +73,103 @@ def print_used_urls(urls):
     return output
 
 
-async def chat(message, start_research, history, table_of_concepts_json, breadth_of_research, depth_of_research, relevancy_pass_rate, num_search_urls, num_search_arxiv, progress=gr.Progress()):
-    history = to_openai_format(message, history)
-    table_of_concepts = None
-    if len(table_of_concepts_json) > 0:
-        table_of_concepts = TableOfConcepts.model_validate_json(table_of_concepts_json)
-    if not start_research:
-        with trace("Table of concepts workflow", group_id=str(uuid.uuid4())):
-            result = await Runner.run(table_of_concepts_search, history)
-            result = await Runner.run(table_of_concepts_agent,  history + [EasyInputMessageParam(role="assistant", content=result.final_output), EasyInputMessageParam(role="user", content="перепиши в json")])
-            table_of_concepts = TableOfConcepts.model_validate(result.final_output)
-            history.append(EasyInputMessageParam(role="assistant", content="Подходит ли вам такое содержание? Что мне нужно поменять?\n\n" + table_of_concepts.print()))
-        return message, start_research, to_gradio_format(history), table_of_concepts.model_dump_json()
-    else:
-        with trace("Research workflow", group_id=str(uuid.uuid4())):
-            # Оглавление готово
-            done_chapters = {}
-            dic_visited_urls = defaultdict(list)
-            progress_counts = 0
-            for chapter in table_of_concepts.chapters:
 
-                if chapter.need_research:
-                    progress_counts += 1
+async def generate_table_of_concepts(message, history):
+    history.append(EasyInputMessageParam(role='user', content=message))
+    with trace("Table of concepts workflow", group_id=str(uuid.uuid4())):
+        result = await Runner.run(table_of_concepts_search, history)
+        result = await Runner.run(table_of_concepts_agent,  history + [EasyInputMessageParam(role="assistant", content=result.final_output), EasyInputMessageParam(role="user", content="перепиши в json")])
+        table_of_concepts = TableOfConcepts.model_validate(result.final_output)
+        history.append(EasyInputMessageParam(role="assistant", content="Хотите ли вы что-то поменять в структуре исследования?\n" + table_of_concepts.print()))
+    return table_of_concepts
 
-                    summaries = []
-                    hypos = []
-                    visited_urls = []
-                    context = {
-                        'title': table_of_concepts.title,
-                        'chapter_name': chapter.chapter_name,
-                        'chapter_description': chapter.chapter_description,
-                        'visited_urls': visited_urls,
-                        'summaries': summaries,
-                        'hypos': hypos
-                    }
-                    for depth in range(depth_of_research):
-                        result = await Runner.run(follow_up_questions_agent, [], context=context)
-                        result = FollowUpQuestions.model_validate(result.final_output)
 
-                        for i, question in enumerate(result.questions):
-                            if i < breadth_of_research:
-                                while True:
-                                    try:
-                                        progress(progress_counts/len(table_of_concepts.chapters), desc=f"Глава '{chapter.chapter_name}', ищем ответ на вопрос '{question}'. Вопрос {depth * breadth_of_research + i + 1} из {depth_of_research * breadth_of_research}")
 
-                                        web_search = await search_web(question, relevancy_pass_rate, num_search_urls, visited_urls)
-                                        arxiv_search = await search_arxiv_relevant_pdfs_and_summarize(question, relevancy_pass_rate, num_search_arxiv, visited_urls)
-                                        if web_search is not None:
-                                            summaries.append(web_search)
+async def generate_research(table_of_concepts, history, breadth_of_research=3, depth_of_research=2, relevancy_pass_rate=8, num_search_urls=5, num_search_arxiv=3):
+    print("---000---", table_of_concepts)
+    with trace("Research workflow", group_id=str(uuid.uuid4())):
+        # Оглавление готово
+        done_chapters = {}
+        dic_visited_urls = defaultdict(list)
+        progress_counts = 0
+        for chapter in table_of_concepts.chapters:
 
-                                        if arxiv_search is not None:
-                                            summaries.append(arxiv_search)
-                                        break
-                                    except Exception as e:
-                                        print(f"Answering question: {str(e)}")
+            if chapter.need_research:
+                progress_counts += 1
 
-                        result = await Runner.run(hypos_agent, [], context=context)
-                        result = NewHypothesis.model_validate(result.final_output)
-                        hypos.extend(result.list_of_brilliant_ideas)
+                summaries = []
+                hypos = []
+                visited_urls = []
+                context = {
+                    'title': table_of_concepts.title,
+                    'chapter_name': chapter.chapter_name,
+                    'chapter_description': chapter.chapter_description,
+                    'visited_urls': visited_urls,
+                    'summaries': summaries,
+                    'hypos': hypos
+                }
+                for depth in range(depth_of_research):
+                    result = await Runner.run(follow_up_questions_agent, [], context=context)
+                    result = FollowUpQuestions.model_validate(result.final_output)
 
-                    context['done_work'] = get_research(table_of_concepts, dic_visited_urls, done_chapters, final=False)
-                    result = await Runner.run(chapter_editor_agent, [], context=context)
-                    result = ChapterText.model_validate(result.final_output)
-                    print("\n+++++\n", result)
-                    done_chapters[chapter.chapter_name] = result.chapter_text_without_title_in_head
-                    dic_visited_urls[chapter.chapter_name] = context['visited_urls']
+                    for i, question in enumerate(result.questions):
+                        if i < breadth_of_research:
+                            try:
+                                yield {
+                                    "progress": f"Глава '{chapter.chapter_name}', ищем ответ на вопрос '{question}'. Вопрос {depth * breadth_of_research + i + 1} из {depth_of_research * breadth_of_research}",
+                                    "research": "",
+                                    "final": False
+                                }
+                                web_search = await search_web(question, relevancy_pass_rate, num_search_urls, visited_urls)
+                                arxiv_search = await search_arxiv_relevant_pdfs_and_summarize(question, relevancy_pass_rate, num_search_arxiv, visited_urls)
+                                if web_search is not None:
+                                    summaries.append(web_search)
 
-            for chapter in table_of_concepts.chapters:
-                if not chapter.need_research:
-                    progress_counts += 1
-                    progress(progress_counts/len(table_of_concepts.chapters), desc=f"Пишем главу {chapter.chapter_name}")
-                    context = {
-                        'title': table_of_concepts.title,
-                        'chapter_name': chapter.chapter_name,
-                        'chapter_description': chapter.chapter_description,
-                        'done_chapters': done_chapters,
-                        'done_work': get_research(table_of_concepts, dic_visited_urls, done_chapters, final=False)
-                    }
-                    result = await Runner.run(chapter_editor_summary_agent, [], context=context)
-                    result = ChapterText.model_validate(result.final_output)
-                    print("\n------\n", result)
-                    done_chapters[chapter.chapter_name] = result.chapter_text_without_title_in_head
+                                if arxiv_search is not None:
+                                    summaries.append(arxiv_search)
+                            except Exception as e:
+                                print(f"Answering question: {str(e)}")
 
-            final_research = get_research(table_of_concepts, dic_visited_urls, done_chapters, final=True)
-            print("\n\n\n\n\n\n", final_research, '\n\n\n\n\n\n')
-            history.append(EasyInputMessageParam(role="assistant", content=final_research))
-        return "", start_research, to_gradio_format(history), table_of_concepts.model_dump_json()
+                    result = await Runner.run(hypos_agent, [], context=context)
+                    result = NewHypothesis.model_validate(result.final_output)
+                    hypos.extend(result.list_of_brilliant_ideas)
+
+                context['done_work'] = get_research(table_of_concepts, dic_visited_urls, done_chapters, final=False)
+                result = await Runner.run(chapter_editor_agent, [], context=context)
+                result = ChapterText.model_validate(result.final_output)
+                print("\n+++++\n", result)
+                done_chapters[chapter.chapter_name] = result.chapter_text_without_title_in_head
+                dic_visited_urls[chapter.chapter_name] = context['visited_urls']
+
+        for chapter in table_of_concepts.chapters:
+            if not chapter.need_research:
+                progress_counts += 1
+                # progress(progress_counts/len(table_of_concepts.chapters), desc=f"Пишем главу {chapter.chapter_name}")
+                yield {
+                    "progress": "Пишем главу {chapter.chapter_name}",
+                    "research": "",
+                    "final": False
+                }
+                context = {
+                    'title': table_of_concepts.title,
+                    'chapter_name': chapter.chapter_name,
+                    'chapter_description': chapter.chapter_description,
+                    'done_chapters': done_chapters,
+                    'done_work': get_research(table_of_concepts, dic_visited_urls, done_chapters, final=False)
+                }
+                result = await Runner.run(chapter_editor_summary_agent, [], context=context)
+                result = ChapterText.model_validate(result.final_output)
+                print("\n------\n", result)
+                done_chapters[chapter.chapter_name] = result.chapter_text_without_title_in_head
+
+        final_research = get_research(table_of_concepts, dic_visited_urls, done_chapters, final=True)
+        history.append(EasyInputMessageParam(role="assistant", content=final_research))
+        print("\n\n\n\n\n\n", final_research, '\n\n\n\n\n\n')
+    yield {
+        "progress": "Готово",
+        "research": final_research,
+        "final": True
+    }
 
 
 def get_research(table_of_concepts, dic_visited_urls, done_chapters, final=False):
@@ -170,27 +178,3 @@ def get_research(table_of_concepts, dic_visited_urls, done_chapters, final=False
         if chapter.chapter_name in done_chapters:
             text = text + "\n" + f"# {chapter.chapter_name}\n{print_used_urls(dic_visited_urls[chapter.chapter_name]) if final else ''}\n{done_chapters[chapter.chapter_name]}"
     return text
-
-
-with gr.Blocks() as app:
-    with gr.Row(scale=5):
-        with gr.Column(scale=5):
-            chatbot = gr.Chatbot(type="messages", height='60vh', show_copy_button=True)
-            msg = gr.Textbox(lines=5)
-            table_of_concepts_box = gr.Textbox(visible=True)
-            with gr.Row(scale=5):
-                btn = gr.Button()
-                checkbox = gr.Checkbox(value=False, label="Начать исследование")
-        with gr.Column(scale=1):
-            breadth_of_research = gr.Slider(maximum=10, minimum=1, value=2, step=1, label='Количество вопросов для поиска в интернете в рамках главы')
-            depth_of_research = gr.Slider(maximum=10, minimum=1, value=2, step=1, label='Количество циклов генерирования дополнительных вопросов и гипотез в рамках главы')
-            relevancy_pass_rate = gr.Slider(maximum=10, minimum=0, value=7, step=1, label='Порог релевантности при выборе решении о переходе на другие web страницы')
-            num_search_urls = gr.Slider(maximum=10, minimum=0, value=5, step=1, label='Количество анализируемых страниц при поисковой выдаче')
-            num_search_arxiv = gr.Slider(maximum=10, minimum=0, value=3, step=1, label='Количество анализируемых статей при поиске в arxiv')
-        btn.click(chat,
-                   [msg, checkbox, chatbot, table_of_concepts_box, breadth_of_research, depth_of_research, relevancy_pass_rate, num_search_urls, num_search_arxiv],
-                   [msg, checkbox, chatbot, table_of_concepts_box],
-                   show_progress_on=msg
-                   )
-
-app.launch(server_name="0.0.0.0")

@@ -2,8 +2,8 @@ FROM python:3.11
 
 WORKDIR /app
 
-COPY ./researcher .
+COPY ./researcher/requirements.txt requirements.txt
 
 RUN pip install -r requirements.txt
 
-ENTRYPOINT ["sh", "-c", "nohup python main.py & tail -f nohup.out"]
+COPY ./researcher .

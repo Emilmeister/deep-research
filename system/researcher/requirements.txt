@@ -13,3 +13,4 @@ arxiv
 aiofiles
 aiohttp
 pymupdf
+a2a-sdk

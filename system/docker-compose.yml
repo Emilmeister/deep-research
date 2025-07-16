@@ -51,6 +51,7 @@ services:
     ports:
       - 7860:7860
       - 7861:7861
+      - 10101:10101
     environment:
       - PHOENIX_TRACE_URL=http://phoenix:6006/v1/traces
       - PHOENIX_PROJECT_NAME=deep-research
@@ -61,7 +62,9 @@ services:
       - SEARXNG_SEARCH_URL=http://searxng:8080/search
       - MAX_CONTENT_LEN=200000
       - GRADIO_SERVER_PORT=7860
-    entrypoint: ['python', '-u', 'main.py']
+      - A2A_HOST=0.0.0.0
+      - A2A_PORT=10101
+    entrypoint: ['python', '-u', 'start_a2a.py']
     depends_on:
       - searxng
       - phoenix
