@@ -14,3 +14,4 @@ aiofiles
 aiohttp
 pymupdf
 a2a-sdk
+langchain_mcp_adapters

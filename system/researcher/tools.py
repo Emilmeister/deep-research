@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 import requests
@@ -6,22 +7,37 @@ from markdownify import markdownify
 import re
 from agents import Agent
 from requests import RequestException
+import xml.etree.ElementTree as ET
 
 from structured_outputs import SummaryWithInterestingUrls, RelevanceScore, SearchWords, \
     TableOfConcepts
 import arxiv
 
 from pdf_recognizer import extract_text_from_pdf, URLInput
+from langchain_mcp_adapters.client import SSEConnection, load_mcp_tools
 
-SEARXNG_SEARCH_URL = os.getenv("SEARXNG_SEARCH_URL", "http://localhost:8080/search")
-MAX_CONTENT_LEN = int(os.getenv("MAX_CONTENT_LEN", 200000))
+YANDEX_SEARCH_MCP_SERVER_URL = os.getenv("YANDEX_SEARCH_MCP_SERVER_URL")
+YANDEX_SEARCH_MCP_SERVER_KEY = os.getenv("YANDEX_SEARCH_MCP_SERVER_KEY")
+YANDEX_SEARCH_MCP_SERVER_SEARCH_TOOL_NAME = os.getenv("YANDEX_SEARCH_MCP_SERVER_SEARCH_TOOL_NAME")
+MAX_CONTENT_LEN = int(os.getenv("MAX_CONTENT_LEN", 50000))
 
 client = arxiv.Client()
+
+yandex_mcp_connection = SSEConnection(
+    transport='sse',
+    timeout=15,
+    url=YANDEX_SEARCH_MCP_SERVER_URL,
+    headers={
+        "ApiKey": YANDEX_SEARCH_MCP_SERVER_KEY
+    }
+)
+
+web_search_tool = None
 
 
 @function_tool
 async def search_web_tool(query: str) -> str:
-    """ Используй для поиска в интернете. Тебе вернется саммари ответов релевантных веб страниц"""
+    """ Используй для поиска в интернете. Тебе вернется краткое содержание ответов релевантных веб страниц"""
     return await search_web(query, 7, 10, [])
 
 @function_tool
@@ -38,17 +54,38 @@ async def search_web(query: str, relevancy_pass_rate: int, num_search: int, visi
         Returns:
             Поисковая выдача
     """
+    global web_search_tool
+
     if num_search == 0:
         return
 
-    results = searxng_search(keywords=query, max_results=num_search)
-    summaries = []
+    if web_search_tool is None:
+        tools = await load_mcp_tools(session=None, connection=yandex_mcp_connection)
+        for tool in tools:
+            if tool.name == YANDEX_SEARCH_MCP_SERVER_SEARCH_TOOL_NAME:
+                web_search_tool = tool
 
-    for result in results:
-        summary = await visit_webpage_and_summarize(result['url'], query)
+    xml_data = await web_search_tool.ainvoke({
+        "body_application_json": {
+            "l10n": "LOCALIZATION_EN",
+            "query": query,
+            "region": "ru",
+            "searchType": "SEARCH_TYPE_COM"
+        }
+    })
+    xml_data_prepared = xml_data[len("Request successful. Result: "):-1]
+    root = ET.fromstring(xml_data_prepared)
+    urls = [doc.find('url').text for doc in root.findall('.//doc')]
+    summaries = [visit_webpage_and_summarize(url, query) for url in urls]
+    summaries = await asyncio.gather(*summaries)
+    summaries_filtered = []
+
+    for i, summary in enumerate(summaries):
         if summary is not None and summary.relevance_score >= relevancy_pass_rate:
-            visited_urls.append(result['url'])
-            summaries.append(summary)
+            visited_urls.append(urls[i])
+            summaries_filtered.append(summary)
+
+    summaries = summaries_filtered
 
     all_interesting_urls = []
 
@@ -56,10 +93,11 @@ async def search_web(query: str, relevancy_pass_rate: int, num_search: int, visi
         all_interesting_urls.extend(
             [x.web_page_url for x in summary.interesting_web_page_urls if x.question_and_url_relevant_score >= relevancy_pass_rate])
 
-    for url in all_interesting_urls:
-        summary = await visit_webpage_and_summarize(url, query)
+    interesting_urls_summaries = [visit_webpage_and_summarize(url, query) for url in all_interesting_urls]
+    interesting_urls_summaries = await asyncio.gather(*interesting_urls_summaries)
+    for i ,summary in enumerate(interesting_urls_summaries):
         if summary is not None and summary.relevance_score >= relevancy_pass_rate:
-            visited_urls.append(url)
+            visited_urls.append(all_interesting_urls[i])
             summaries.append(summary)
 
     if list(summaries) == 0:
@@ -96,17 +134,9 @@ async def visit_webpage_and_summarize(url: str, query: str):
             return
 
         return await summarize_content(query, url, content, "веб страница")
-    except RequestException as e:
-        print(f"Error fetching the webpage {url}: {str(e)}")
     except Exception as e:
         print(f"An unexpected error occurred {url}: {str(e)}")
-
-
-def searxng_search(keywords, max_results):
-    response = requests.get(f"{SEARXNG_SEARCH_URL}?q={keywords}&format=json", timeout=30)
-    response.raise_for_status()
-    return response.json()['results'][:max_results]
-
+        return
 
 async def parse_pdf(url: str):
     try:

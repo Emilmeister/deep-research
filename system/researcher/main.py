@@ -146,7 +146,7 @@ async def generate_research(table_of_concepts, history, breadth_of_research=3, d
                 progress_counts += 1
                 # progress(progress_counts/len(table_of_concepts.chapters), desc=f"Пишем главу {chapter.chapter_name}")
                 yield {
-                    "progress": "Пишем главу {chapter.chapter_name}",
+                    "progress": f"Пишем главу {chapter.chapter_name}",
                     "research": "",
                     "final": False
                 }
