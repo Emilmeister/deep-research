@@ -99,7 +99,7 @@ async def generate_research(table_of_concepts, history, breadth_of_research=3, d
 
                 summaries = []
                 hypos = []
-                visited_urls = []
+                visited_urls = set()
                 context = {
                     'title': table_of_concepts.title,
                     'chapter_name': chapter.chapter_name,
@@ -137,7 +137,6 @@ async def generate_research(table_of_concepts, history, breadth_of_research=3, d
                 context['done_work'] = get_research(table_of_concepts, dic_visited_urls, done_chapters, final=False)
                 result = await Runner.run(chapter_editor_agent, [], context=context)
                 result = ChapterText.model_validate(result.final_output)
-                print("\n+++++\n", result)
                 done_chapters[chapter.chapter_name] = result.chapter_text_without_title_in_head
                 dic_visited_urls[chapter.chapter_name] = context['visited_urls']
 

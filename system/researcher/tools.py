@@ -46,7 +46,7 @@ async def final_answer_table_of_concepts(answer: TableOfConcepts) -> TableOfConc
     return answer
 
 
-async def search_web(query: str, relevancy_pass_rate: int, num_search: int, visited_urls: list[str]):
+async def search_web(query: str, relevancy_pass_rate: int, num_search: int, visited_urls: set[str]):
     """Используй для поиска инфорации в интернете
         Args:
         query: запрос
@@ -82,7 +82,7 @@ async def search_web(query: str, relevancy_pass_rate: int, num_search: int, visi
 
     for i, summary in enumerate(summaries):
         if summary is not None and summary.relevance_score >= relevancy_pass_rate:
-            visited_urls.append(urls[i])
+            visited_urls.add(urls[i])
             summaries_filtered.append(summary)
 
     summaries = summaries_filtered
@@ -97,7 +97,7 @@ async def search_web(query: str, relevancy_pass_rate: int, num_search: int, visi
     interesting_urls_summaries = await asyncio.gather(*interesting_urls_summaries)
     for i ,summary in enumerate(interesting_urls_summaries):
         if summary is not None and summary.relevance_score >= relevancy_pass_rate:
-            visited_urls.append(all_interesting_urls[i])
+            visited_urls.add(all_interesting_urls[i])
             summaries.append(summary)
 
     if list(summaries) == 0:
@@ -146,7 +146,7 @@ async def parse_pdf(url: str):
         print(f"An unexpected error occurred while parse_pdf {url}: {str(e)}")
 
 
-async def search_arxiv_relevant_pdfs_and_summarize(question: str, relevancy_pass_rate: int, num_search: int, visited_urls: list[str]):
+async def search_arxiv_relevant_pdfs_and_summarize(question: str, relevancy_pass_rate: int, num_search: int, visited_urls: set[str]):
     question_to_words_agent = Agent(
         name="Questions to words agent",
         instructions=f"""
@@ -182,7 +182,7 @@ async def search_arxiv_relevant_pdfs_and_summarize(question: str, relevancy_pass
                 summary = await summarize_content(question, article['pdf_url'], content, "статья из научного журнала")
                 if summary.relevance_score >= relevancy_pass_rate:
                     summaries.append(summary)
-                    visited_urls.append(article['pdf_url'])
+                    visited_urls.add(article['pdf_url'])
 
     return await summarize_texts(question, summaries)
 
