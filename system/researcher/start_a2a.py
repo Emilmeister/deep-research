@@ -31,19 +31,30 @@ def main():
     try:
         capabilities = AgentCapabilities(streaming=True)
         skill = AgentSkill(
-            id='any_vm_answer',
-            name='Создать виртуальную машину',
-            description='Создать виртуальную машину пользователю',
-            tags=['виртуальная машина', 'создать'],
+            id='123dsaae',
+            name='Write research',
+            description='Write research with internet search',
+            tags=['research'],
             examples=[
-                'Запусти виртуальную машину',
+                'Write research for topic The impact of digitalization on the labor market.',
+                'Write research for topic Development of the sharing economy in megacities.',
+                'Write research for topic The role of small and medium enterprises in the context of economic instability.',
+                'Write research for topic The impact of social networks on the formation of public opinion.',
+                'Write research for topic Changes in the structure of the family in the 21st century.',
+                'Write research for topic Problems of social adaptation of migrants.',
+                'Write research for topic The evolution of international relations in the era of globalization.',
+                'Write research for topic The impact of populist movements on democratic processes.',
+                'Write research for topic Analysis of the impact of sanctions on international politics.',
+                'Write research for topic Prospects for the development of artificial intelligence and its impact on society.',
+                'Write research for topic The future of quantum computing and its applications.',
+                'Write research for topic Data security in the era of the Internet of Things.'
             ],
         )
         my_agent_executor = MyAgentExecutor()
         agent_card = AgentCard(
-            name='VM Creator',
+            name='Research Agent',
             # description='Этот агент поможет создать виртуальную машину и подскажет какие конфигурации можно использовать',
-            description='This agent will help you create a virtual machine and tell you what configurations can be used',
+            description='This agent will write research for you about your theme',
             url=f'http://{os.getenv("A2A_HOST")}:{os.getenv("A2A_PORT")}/',
             version='1.0.0',
             defaultInputModes=my_agent_executor.agent.SUPPORTED_CONTENT_TYPES,
