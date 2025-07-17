@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 
 import requests
@@ -6,8 +7,6 @@ from agents import Runner, function_tool
 from markdownify import markdownify
 import re
 from agents import Agent
-from requests import RequestException
-import xml.etree.ElementTree as ET
 
 from structured_outputs import SummaryWithInterestingUrls, RelevanceScore, SearchWords, \
     TableOfConcepts
@@ -16,20 +15,16 @@ import arxiv
 from pdf_recognizer import extract_text_from_pdf, URLInput
 from langchain_mcp_adapters.client import SSEConnection, load_mcp_tools
 
-YANDEX_SEARCH_MCP_SERVER_URL = os.getenv("YANDEX_SEARCH_MCP_SERVER_URL")
-YANDEX_SEARCH_MCP_SERVER_KEY = os.getenv("YANDEX_SEARCH_MCP_SERVER_KEY")
-YANDEX_SEARCH_MCP_SERVER_SEARCH_TOOL_NAME = os.getenv("YANDEX_SEARCH_MCP_SERVER_SEARCH_TOOL_NAME")
+SEARXNG_MCP_SERVER_URL = os.getenv("SEARXNG_MCP_SERVER_URL")
+SEARXNG_MCP_SERVER_SEARCH_TOOL_NAME = os.getenv("SEARXNG_MCP_SERVER_SEARCH_TOOL_NAME")
 MAX_CONTENT_LEN = int(os.getenv("MAX_CONTENT_LEN", 50000))
 
 client = arxiv.Client()
 
-yandex_mcp_connection = SSEConnection(
+searxng_mcp_connection = SSEConnection(
     transport='sse',
-    timeout=15,
-    url=YANDEX_SEARCH_MCP_SERVER_URL,
-    headers={
-        "ApiKey": YANDEX_SEARCH_MCP_SERVER_KEY
-    }
+    timeout=150,
+    url=SEARXNG_MCP_SERVER_URL,
 )
 
 web_search_tool = None
@@ -38,7 +33,7 @@ web_search_tool = None
 @function_tool
 async def search_web_tool(query: str) -> str:
     """ Используй для поиска в интернете. Тебе вернется краткое содержание ответов релевантных веб страниц"""
-    return await search_web(query, 7, 10, [])
+    return await search_web(query, 7, 10, set())
 
 @function_tool
 async def final_answer_table_of_concepts(answer: TableOfConcepts) -> TableOfConcepts:
@@ -60,22 +55,21 @@ async def search_web(query: str, relevancy_pass_rate: int, num_search: int, visi
         return
 
     if web_search_tool is None:
-        tools = await load_mcp_tools(session=None, connection=yandex_mcp_connection)
+        tools = await load_mcp_tools(session=None, connection=searxng_mcp_connection)
         for tool in tools:
-            if tool.name == YANDEX_SEARCH_MCP_SERVER_SEARCH_TOOL_NAME:
+            if tool.name == SEARXNG_MCP_SERVER_SEARCH_TOOL_NAME:
                 web_search_tool = tool
 
-    xml_data = await web_search_tool.ainvoke({
-        "body_application_json": {
-            "l10n": "LOCALIZATION_EN",
-            "query": query,
-            "region": "ru",
-            "searchType": "SEARCH_TYPE_COM"
-        }
+    print('web_search_tool', web_search_tool)
+
+    results = await web_search_tool.ainvoke({
+        "query": query,
     })
-    xml_data_prepared = xml_data[len("Request successful. Result: "):-1]
-    root = ET.fromstring(xml_data_prepared)
-    urls = [doc.find('url').text for doc in root.findall('.//doc')]
+    results = json.loads(results)
+    urls = [x['url'] for x in results]
+
+    print('))))urls', urls)
+
     summaries = [visit_webpage_and_summarize(url, query) for url in urls]
     summaries = await asyncio.gather(*summaries)
     summaries_filtered = []

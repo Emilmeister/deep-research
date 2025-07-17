@@ -46,14 +46,12 @@ services:
       - OPENAI_API_URL=https://openrouter.ai/api/v1
       - DEFAULT_MODEL=google/gemini-2.0-flash-001
       - TABLE_OF_CONCEPTS_MODEL=openai/gpt-4.1-mini
-      - SEARXNG_SEARCH_URL=http://searxng:8080/search
-      - MAX_CONTENT_LEN=200000
-      - GRADIO_SERVER_PORT=7860
+      - SEARXNG_SEARCH_URL=http://searxng:8000/sse
+      - MAX_CONTENT_LEN=20000
       - A2A_HOST=0.0.0.0
       - A2A_PORT=10101
-      - YANDEX_SEARCH_MCP_SERVER_URL=https://d5dj4o5pbnqgca1d546v.cmxivbes.apigw.yandexcloud.net:3000/sse
-      - YANDEX_SEARCH_MCP_SERVER_KEY=...
-      - YANDEX_SEARCH_MCP_SERVER_SEARCH_TOOL_NAME=web_search_post
+      - SEARXNG_MCP_SERVER_URL=http://searxng:8000/sse
+      - SEARXNG_MCP_SERVER_SEARCH_TOOL_NAME=searxng_search
     entrypoint: ['python', '-u', 'start_a2a.py']
     depends_on:
       - phoenix
@@ -63,3 +61,14 @@ services:
       retries: 5
       start_period: 20s
       timeout: 10s
+  searxng:
+    container_name: searxng
+    build:
+      dockerfile: searxng/Dockerfile
+    volumes:
+      - ./searxng:/etc/searxng
+    ports:
+      - 8000:8000
+    entrypoint: [ '/usr/local/searxng/entrypoint.sh' ]
+    environment:
+      - SEARXNG_SECRET=1234abcdxdvqwer234dfsdf
