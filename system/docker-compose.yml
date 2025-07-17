@@ -33,11 +33,15 @@ services:
       start_period: 80s
   searxng:
     container_name: searxng
-    image: searxng/searxng
+    build:
+      dockerfile: searxng/Dockerfile
     volumes:
       - ./searxng:/etc/searxng
     ports:
-      - 8080:8080
+      - 8000:8000
+    entrypoint: ['/usr/local/searxng/entrypoint.sh']
+    environment:
+      - SEARXNG_SECRET=1234abcd
     healthcheck:
       test: curl --fail http://searxng:8080 || exit 1
       interval: 60s
