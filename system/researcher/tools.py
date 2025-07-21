@@ -15,6 +15,12 @@ import arxiv
 from pdf_recognizer import extract_text_from_pdf, URLInput
 from langchain_mcp_adapters.client import SSEConnection, load_mcp_tools
 
+# ------------------- ЛОГГИРОВАНИЕ -------------------
+import logging
+
+logger = logging.getLogger("agents_search")
+# ---------------------------------------------------
+
 SEARXNG_MCP_SERVER_URL = os.getenv("SEARXNG_MCP_SERVER_URL")
 SEARXNG_MCP_SERVER_SEARCH_TOOL_NAME = os.getenv("SEARXNG_MCP_SERVER_SEARCH_TOOL_NAME")
 MAX_CONTENT_LEN = int(os.getenv("MAX_CONTENT_LEN", 50000))
@@ -28,7 +34,6 @@ searxng_mcp_connection = SSEConnection(
 )
 
 web_search_tool = None
-
 
 @function_tool
 async def search_web_tool(query: str) -> str:
@@ -49,64 +54,79 @@ async def search_web(query: str, relevancy_pass_rate: int, num_search: int, visi
         Returns:
             Поисковая выдача
     """
-    print(f"search_web--->{query}")
+    logger.info(f"Start search_web: query='{query}' | relevancy_pass_rate={relevancy_pass_rate} | num_search={num_search}")
     global web_search_tool
 
     if num_search == 0:
+        logger.warning(f"num_search == 0, skipping search_web for query='{query}'")
         return
 
     if web_search_tool is None:
-        tools = await load_mcp_tools(session=None, connection=searxng_mcp_connection)
-        for tool in tools:
-            if tool.name == SEARXNG_MCP_SERVER_SEARCH_TOOL_NAME:
-                web_search_tool = tool
+        try:
+            logger.debug("Loading MCP tools...")
+            tools = await load_mcp_tools(session=None, connection=searxng_mcp_connection)
+            for tool in tools:
+                if tool.name == SEARXNG_MCP_SERVER_SEARCH_TOOL_NAME:
+                    web_search_tool = tool
+                    logger.info(f"Using MCP tool: {tool.name}")
+            if web_search_tool is None:
+                logger.error(f"No web_search_tool with name {SEARXNG_MCP_SERVER_SEARCH_TOOL_NAME} found")
+                return
+        except Exception as e:
+            logger.exception(f"Failed to load MCP tools: {e}")
+            return
 
-    results = await web_search_tool.ainvoke({
-        "query": query,
-    })
-    results = json.loads(results)
-    urls = [x['url'] for x in results[:num_search]]
+    try:
+        results = await web_search_tool.ainvoke({
+            "query": query,
+        })
+        results = json.loads(results)
+        urls = [x['url'] for x in results[:num_search]]
 
-    summaries = [visit_webpage_and_summarize(url, query) for url in urls]
-    summaries = await asyncio.gather(*summaries)
-    summaries_filtered = []
+        summaries = [visit_webpage_and_summarize(url, query) for url in urls]
+        summaries = await asyncio.gather(*summaries)
+        summaries_filtered = []
 
-    for i, summary in enumerate(summaries):
-        if summary is not None and summary.relevance_score >= relevancy_pass_rate:
-            visited_urls.add(urls[i])
-            summaries_filtered.append(summary)
+        for i, summary in enumerate(summaries):
+            if summary is not None and summary.relevance_score >= relevancy_pass_rate:
+                visited_urls.add(urls[i])
+                summaries_filtered.append(summary)
 
-    summaries = summaries_filtered
+        summaries = summaries_filtered
 
-    all_interesting_urls = []
+        all_interesting_urls = []
 
-    for summary in summaries:
-        all_interesting_urls.extend(
-            [x.web_page_url for x in summary.interesting_web_page_urls if x.question_and_url_relevant_score >= relevancy_pass_rate])
+        for summary in summaries:
+            all_interesting_urls.extend(
+                [x.web_page_url for x in summary.interesting_web_page_urls if x.question_and_url_relevant_score >= relevancy_pass_rate])
 
-    interesting_urls_summaries = [visit_webpage_and_summarize(url, query) for url in all_interesting_urls]
-    interesting_urls_summaries = await asyncio.gather(*interesting_urls_summaries)
-    for i ,summary in enumerate(interesting_urls_summaries):
-        if summary is not None and summary.relevance_score >= relevancy_pass_rate:
-            visited_urls.add(all_interesting_urls[i])
-            summaries.append(summary)
+        interesting_urls_summaries = [visit_webpage_and_summarize(url, query) for url in all_interesting_urls]
+        interesting_urls_summaries = await asyncio.gather(*interesting_urls_summaries)
+        for i ,summary in enumerate(interesting_urls_summaries):
+            if summary is not None and summary.relevance_score >= relevancy_pass_rate:
+                visited_urls.add(all_interesting_urls[i])
+                summaries.append(summary)
 
-    if list(summaries) == 0:
+        if len(summaries) == 0:
+            logger.info("No relevant summaries found for query: %s", query)
+            return None
+
+        return await summarize_texts(query, summaries)
+    except Exception as e:
+        logger.exception(f"Error during search_web for query='{query}': {e}")
         return None
-
-    return await summarize_texts(query, summaries)
 
 
 async def visit_webpage_and_summarize(url: str, query: str):
-    # """Посещение веб-страницы по URL и возвращение ее контента в markdown
-    #
-    # Args:
-    #     url: URL веб-страницы, которую ты хочешь посетить.
-    #
-    # Returns:
-    #     Контент веб-страницы в markdown, или ошибка если запрос выполнился некорректно
-    # """
+    """Посещение веб-страницы по URL и возвращение ее контента в markdown
 
+    Args:
+        url: URL веб-страницы, которую ты хочешь посетить.
+
+    Returns:
+        Контент веб-страницы в markdown, или ошибка если запрос выполнился некорректно
+    """
+    logger.info(f"Visiting webpage and summarizing: url={url}")
     if url.startswith("https://arxiv.org/abs/"):
         url = url.replace("abs", "pdf")
 
@@ -122,22 +142,25 @@ async def visit_webpage_and_summarize(url: str, query: str):
             content = re.sub(r"\n{3,}", "\n\n", markdown_content)
 
         if content is None:
+            logger.warning(f"No content extracted from URL: {url}")
             return
 
         return await summarize_content(query, url, content, "веб страница")
     except Exception as e:
-        print(f"An unexpected error occurred {url}: {str(e)}")
+        logger.exception(f"An unexpected error occurred when summarizing {url}: {e}")
         return
 
 async def parse_pdf(url: str):
+    logger.info(f"Parsing PDF from url: {url}")
     try:
         response = await extract_text_from_pdf(URLInput(url=url))
         return response.text
     except Exception as e:
-        print(f"An unexpected error occurred while parse_pdf {url}: {str(e)}")
-
+        logger.exception(f"An unexpected error occurred while parse_pdf {url}: {e}", exc_info=True)
+        return None
 
 async def search_arxiv_relevant_pdfs_and_summarize(question: str, relevancy_pass_rate: int, num_search: int, visited_urls: set[str]):
+    logger.info(f"Searching arxiv for question: {question!r}; num_search={num_search}")
     question_to_words_agent = Agent(
         name="Questions to words agent",
         instructions=f"""
@@ -160,6 +183,7 @@ async def search_arxiv_relevant_pdfs_and_summarize(question: str, relevancy_pass
         output_type=SearchWords
     )
     if num_search == 0:
+        logger.warning("num_search == 0 in search_arxiv_relevant_pdfs_and_summarize, skipping arxiv search")
         return
 
     agent_result = await Runner.run(question_to_words_agent, [])
@@ -175,10 +199,15 @@ async def search_arxiv_relevant_pdfs_and_summarize(question: str, relevancy_pass
                     summaries.append(summary)
                     visited_urls.add(article['pdf_url'])
 
+    if not summaries:
+        logger.info(f"No relevant arxiv summaries for question: {question!r}")
+        return None
+
     return await summarize_texts(question, summaries)
 
 
 async def search_arxiv_relevant_pdfs(search_words: list[str], question: str, max_results: int):
+    logger.info(f"Searching arxiv PDFs for words: {search_words!r}, question={question!r}, max_results={max_results}")
     words = ' '.join(search_words)
     search = arxiv.Search(
         query=f'ti:{words} AND abs:{words}',
@@ -250,11 +279,14 @@ async def search_arxiv_relevant_pdfs(search_words: list[str], question: str, max
             'abstract': result.summary,
             'relevance_score': RelevanceScore.model_validate(agent_result.final_output).relevance_score
         })
+    logger.debug(f"Found {len(results)} arxiv articles")
     return results
 
 
 async def summarize_content(query: str, url: str, content: str, source: str) -> SummaryWithInterestingUrls:
+    logger.info(f"Summarizing content: url={url} source={source} length={len(content)}")
     if len(content) > MAX_CONTENT_LEN:
+        logger.warning(f"Trimming content for url={url} from {len(content)} to {MAX_CONTENT_LEN} characters")
         content = content[:MAX_CONTENT_LEN]
 
     search_summary_agent = Agent(
@@ -300,7 +332,9 @@ async def summarize_content(query: str, url: str, content: str, source: str) -> 
 
 
 async def summarize_texts(query: str, summaries: list[SummaryWithInterestingUrls]):
+    logger.info(f"Summarizing {len(summaries)} texts for query={query!r}")
     if len(summaries) == 0:
+        logger.warning("summarize_texts called with empty summaries list")
         return None
 
     n = '\n\n'

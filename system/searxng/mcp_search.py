@@ -1,7 +1,23 @@
 from typing import List, Dict, Any
 
 import requests
+import os
 from fastmcp import FastMCP
+
+
+# ==========================
+# НАСТРОЙКА ЛОГГЕРА
+# ==========================
+import logging
+
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL),
+    format='%(asctime)s %(levelname)s %(name)s %(message)s',
+)
+logger = logging.getLogger("mcp_search")
+# ==========================
 
 mcp = FastMCP("SearXNG Search")
 
@@ -58,7 +74,7 @@ def searxng_search(query: str) -> List[Dict[str, Any]]:
 
     except requests.exceptions.RequestException as e:
         # Логируем ошибку и возвращаем пустой список вместо падения
-        print(f"Ошибка при выполнении поиска: {e}")
+        logger.exception(f"Ошибка при выполнении поиска: {e}", exc_info=True)
         return []
 
 

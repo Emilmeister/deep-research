@@ -47,11 +47,16 @@ services:
       - DEFAULT_MODEL=google/gemini-2.0-flash-001
       - TABLE_OF_CONCEPTS_MODEL=openai/gpt-4.1-mini
       - SEARXNG_SEARCH_URL=http://searxng:8000/sse
-      - MAX_CONTENT_LEN=20000
+      - MAX_CONTENT_LEN=200000
       - A2A_HOST=0.0.0.0
       - A2A_PORT=10101
       - SEARXNG_MCP_SERVER_URL=http://searxng:8000/sse
       - SEARXNG_MCP_SERVER_SEARCH_TOOL_NAME=searxng_search
+      - BREADTH_OF_RESEARCH=4
+      - DEPTH_OF_RESEARCH=2
+      - RELEVANCY_PASS_RATE=9
+      - NUM_SEARCH_URLS=5
+      - NUM_SEARCH_ARXIV=3
     entrypoint: ['python', '-u', 'start_a2a.py']
     depends_on:
       - phoenix

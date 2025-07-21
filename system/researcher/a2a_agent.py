@@ -1,7 +1,17 @@
+import os
 from typing import Dict, Any, List, AsyncGenerator
 import asyncio
+import logging
 
 from main import generate_table_of_concepts, generate_research
+
+logger = logging.getLogger("agents_logger")
+
+BREADTH_OF_RESEARCH = int(os.getenv("BREADTH_OF_RESEARCH", "4"))
+DEPTH_OF_RESEARCH = int(os.getenv("DEPTH_OF_RESEARCH", "2"))
+RELEVANCY_PASS_RATE = int(os.getenv("RELEVANCY_PASS_RATE", "9"))
+NUM_SEARCH_URLS = int(os.getenv("NUM_SEARCH_URLS", "5"))
+NUM_SEARCH_ARXIV = int(os.getenv("NUM_SEARCH_ARXIV", "3"))
 
 
 class RunnerState:
@@ -57,7 +67,15 @@ class ResearchAgent:
                 runner_state.table_of_concepts = table_of_concepts
 
                 research_chapter_states = []
-                for research_chapter_state in generate_research(table_of_concepts, runner_state.history):
+                for research_chapter_state in generate_research(
+                        table_of_concepts,
+                        runner_state.history,
+                        BREADTH_OF_RESEARCH,
+                        DEPTH_OF_RESEARCH,
+                        RELEVANCY_PASS_RATE,
+                        NUM_SEARCH_URLS,
+                        NUM_SEARCH_ARXIV
+                ):
                     research_chapter_states.append(research_chapter_state)
                     if research_chapter_state['final']:
                         break
@@ -68,7 +86,7 @@ class ResearchAgent:
                     "content": research_chapter_states[-1]['research']
                 }
             except Exception as e:
-                print(e)
+                logger.exception(f"Error while processing research: {e}", exc_info=True)
                 return {
                     "is_task_complete": False,
                     "require_user_input": False,
@@ -86,7 +104,6 @@ class ResearchAgent:
                 table_of_concepts = await generate_table_of_concepts(query, runner_state.history)
                 runner_state.table_of_concepts = table_of_concepts
 
-                print("runner_state.history generate_table_of_concepts ", runner_state.history)
                 # Format the response
                 yield {
                     "is_task_complete": False,
@@ -95,7 +112,7 @@ class ResearchAgent:
                     "is_error": False
                 }
             except Exception as e:
-                print(e)
+                logger.exception(f"Error while processing research: {e}", exc_info=True)
                 yield {
                     "is_task_complete": False,
                     "require_user_input": False,
@@ -113,11 +130,18 @@ class ResearchAgent:
             # Complete run
             runner_state.research_started = True
             try:
-                print("runner_state.history generate_research", runner_state.history)
                 table_of_concepts = await generate_table_of_concepts(query, runner_state.history)
                 runner_state.table_of_concepts = table_of_concepts
 
-                async for research_chapter_state in generate_research(table_of_concepts, runner_state.history):
+                async for research_chapter_state in generate_research(
+                    table_of_concepts,
+                    runner_state.history,
+                    BREADTH_OF_RESEARCH,
+                    DEPTH_OF_RESEARCH,
+                    RELEVANCY_PASS_RATE,
+                    NUM_SEARCH_URLS,
+                    NUM_SEARCH_ARXIV
+                ):
                     if research_chapter_state['final']:
                         yield {
                             "is_task_complete": True,
@@ -134,7 +158,7 @@ class ResearchAgent:
                             "is_error": False
                         }
             except Exception as e:
-                print(e)
+                logger.exception(f"Error while processing research: {e}", exc_info=True)
                 yield {
                     "is_task_complete": False,
                     "require_user_input": False,

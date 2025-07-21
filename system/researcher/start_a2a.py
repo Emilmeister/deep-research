@@ -14,6 +14,18 @@ from dotenv import load_dotenv
 from agent_task_manager import MyAgentExecutor
 
 
+# ==========================
+# НАСТРОЙКА ЛОГГЕРА
+# ==========================
+import logging
+
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL),
+    format='%(asctime)s %(levelname)s %(name)s %(message)s',
+)
+# ==========================
 
 load_dotenv()
 
