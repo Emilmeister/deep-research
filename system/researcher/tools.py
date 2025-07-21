@@ -49,6 +49,7 @@ async def search_web(query: str, relevancy_pass_rate: int, num_search: int, visi
         Returns:
             Поисковая выдача
     """
+    print(f"search_web--->{query}")
     global web_search_tool
 
     if num_search == 0:
@@ -60,15 +61,11 @@ async def search_web(query: str, relevancy_pass_rate: int, num_search: int, visi
             if tool.name == SEARXNG_MCP_SERVER_SEARCH_TOOL_NAME:
                 web_search_tool = tool
 
-    print('web_search_tool', web_search_tool)
-
     results = await web_search_tool.ainvoke({
         "query": query,
     })
     results = json.loads(results)
-    urls = [x['url'] for x in results]
-
-    print('))))urls', urls)
+    urls = [x['url'] for x in results[:num_search]]
 
     summaries = [visit_webpage_and_summarize(url, query) for url in urls]
     summaries = await asyncio.gather(*summaries)

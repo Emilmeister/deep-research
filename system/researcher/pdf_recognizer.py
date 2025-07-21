@@ -58,11 +58,9 @@ def converter(pdf_document_path):
 async def extract_text_from_pdf(inp: URLInput) -> TextOutput:
     with tempfile.TemporaryDirectory() as temp_dir:
         try:
-            print(f"processing url={inp.url}")
             pdf_path = await download_pdf_async(inp.url, temp_dir)
 
             text = converter(pdf_path)
-            print(f"done url={inp.url} ")
             output = TextOutput(text=text)
             return output
         except HTTPException:

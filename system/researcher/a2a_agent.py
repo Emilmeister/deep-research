@@ -81,18 +81,27 @@ class ResearchAgent:
         runner_state = self._get_or_create_runner(session_id)
 
         if not runner_state.table_of_concepts:
-            # Complete run
-            table_of_concepts = await generate_table_of_concepts(query, runner_state.history)
-            runner_state.table_of_concepts = table_of_concepts
+            try:
+                # Complete run
+                table_of_concepts = await generate_table_of_concepts(query, runner_state.history)
+                runner_state.table_of_concepts = table_of_concepts
 
-            print("runner_state.history generate_table_of_concepts ", runner_state.history)
-            # Format the response
-            yield {
-                "is_task_complete": False,
-                "require_user_input": True,
-                "content": table_of_concepts.print(),
-                "is_error": False
-            }
+                print("runner_state.history generate_table_of_concepts ", runner_state.history)
+                # Format the response
+                yield {
+                    "is_task_complete": False,
+                    "require_user_input": True,
+                    "content": table_of_concepts.print(),
+                    "is_error": False
+                }
+            except Exception as e:
+                print(e)
+                yield {
+                    "is_task_complete": False,
+                    "require_user_input": False,
+                    "content": "Произошла ошибка при обработке запроса.",
+                    "is_error": True
+                }
         else:
             if runner_state.research_started:
                 yield {

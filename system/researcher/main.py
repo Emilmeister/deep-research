@@ -1,8 +1,10 @@
 import os
 import ssl
 import uuid
+import httpx
 from collections import defaultdict
-from agents import set_default_openai_client, set_default_openai_api, set_trace_processors, Runner, trace
+from agents import set_default_openai_client, set_default_openai_api, set_trace_processors, Runner, trace, \
+    OpenAIChatCompletionsModel
 from agents.models import openai_provider
 from gradio import ChatMessage
 from openai import AsyncOpenAI
@@ -24,6 +26,10 @@ OPENAI_API_URL = os.getenv("OPENAI_API_URL", "https://openrouter.ai/api/v1")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openai/gpt-4.1-mini")
 TABLE_OF_CONCEPTS_MODEL = os.getenv("TABLE_OF_CONCEPTS_MODEL", "openai/gpt-4.1-mini")
 
+
+default_model = OpenAIChatCompletionsModel(model=DEFAULT_MODEL, openai_client=AsyncOpenAI(base_url=OPENAI_API_URL, api_key=OPENAI_API_KEY, timeout=60 * 5, http_client=httpx.AsyncClient(verify=False)))
+table_of_concepts_model = OpenAIChatCompletionsModel(model=TABLE_OF_CONCEPTS_MODEL, openai_client=AsyncOpenAI(base_url=OPENAI_API_URL, api_key=OPENAI_API_KEY, timeout=60 * 5, http_client=httpx.AsyncClient(verify=False)))
+
 # configure the Phoenix tracer
 set_trace_processors([])
 tracer_provider = register(
@@ -32,17 +38,17 @@ tracer_provider = register(
     auto_instrument=True
 )
 
-set_default_openai_client(AsyncOpenAI(base_url=OPENAI_API_URL, api_key=OPENAI_API_KEY, timeout=60 * 5))
+set_default_openai_client(AsyncOpenAI(base_url=OPENAI_API_URL, api_key=OPENAI_API_KEY, timeout=60 * 5, http_client=httpx.AsyncClient(verify=False)))
 set_default_openai_api('chat_completions')
 openai_provider.DEFAULT_MODEL = DEFAULT_MODEL
 
 
-table_of_concepts_agent = TableOfConceptsAgent(model=TABLE_OF_CONCEPTS_MODEL)
-table_of_concepts_search = TableOfConceptsSearchAgent(model=TABLE_OF_CONCEPTS_MODEL)
-follow_up_questions_agent = FollowUpQuestionsAgent()
-hypos_agent = HyposGeneratingAgent()
-chapter_editor_agent = ChapterEditorAgent()
-chapter_editor_summary_agent = ChapterEditorSummaryAgent()
+table_of_concepts_agent = TableOfConceptsAgent(model=table_of_concepts_model)
+table_of_concepts_search = TableOfConceptsSearchAgent(model=table_of_concepts_model)
+follow_up_questions_agent = FollowUpQuestionsAgent(model=default_model)
+hypos_agent = HyposGeneratingAgent(model=default_model)
+chapter_editor_agent = ChapterEditorAgent(model=default_model)
+chapter_editor_summary_agent = ChapterEditorSummaryAgent(model=default_model)
 
 
 def to_openai_format(message, history):
@@ -85,18 +91,16 @@ async def generate_table_of_concepts(message, history):
 
 
 
-async def generate_research(table_of_concepts, history, breadth_of_research=3, depth_of_research=2, relevancy_pass_rate=8, num_search_urls=5, num_search_arxiv=3):
-    print("---000---", table_of_concepts)
+async def generate_research(table_of_concepts, history, breadth_of_research=3, depth_of_research=2, relevancy_pass_rate=9, num_search_urls=3, num_search_arxiv=2):
     with trace("Research workflow", group_id=str(uuid.uuid4())):
         # Оглавление готово
         done_chapters = {}
         dic_visited_urls = defaultdict(list)
         progress_counts = 0
+        progress_len = breadth_of_research * depth_of_research * len([x for x in table_of_concepts.chapters if x.need_research]) + len([x for x in table_of_concepts.chapters if not x.need_research])
         for chapter in table_of_concepts.chapters:
 
             if chapter.need_research:
-                progress_counts += 1
-
                 summaries = []
                 hypos = []
                 visited_urls = set()
@@ -114,9 +118,10 @@ async def generate_research(table_of_concepts, history, breadth_of_research=3, d
 
                     for i, question in enumerate(result.questions):
                         if i < breadth_of_research:
+                            progress_counts += 1
                             try:
                                 yield {
-                                    "progress": f"Глава '{chapter.chapter_name}', ищем ответ на вопрос '{question}'. Вопрос {depth * breadth_of_research + i + 1} из {depth_of_research * breadth_of_research}",
+                                    "progress": f"Прогресс: {progress_counts/progress_len*100:.0f}%. Ищем ответ на вопрос '{question}'.",
                                     "research": "",
                                     "final": False
                                 }
@@ -143,9 +148,8 @@ async def generate_research(table_of_concepts, history, breadth_of_research=3, d
         for chapter in table_of_concepts.chapters:
             if not chapter.need_research:
                 progress_counts += 1
-                # progress(progress_counts/len(table_of_concepts.chapters), desc=f"Пишем главу {chapter.chapter_name}")
                 yield {
-                    "progress": f"Пишем главу {chapter.chapter_name}",
+                    "progress": f"Прогресс: {progress_counts/progress_len*100:.0f}%. Пишем главу {chapter.chapter_name}",
                     "research": "",
                     "final": False
                 }
@@ -158,12 +162,10 @@ async def generate_research(table_of_concepts, history, breadth_of_research=3, d
                 }
                 result = await Runner.run(chapter_editor_summary_agent, [], context=context)
                 result = ChapterText.model_validate(result.final_output)
-                print("\n------\n", result)
                 done_chapters[chapter.chapter_name] = result.chapter_text_without_title_in_head
 
         final_research = get_research(table_of_concepts, dic_visited_urls, done_chapters, final=True)
         history.append(EasyInputMessageParam(role="assistant", content=final_research))
-        print("\n\n\n\n\n\n", final_research, '\n\n\n\n\n\n')
     yield {
         "progress": "Готово",
         "research": final_research,

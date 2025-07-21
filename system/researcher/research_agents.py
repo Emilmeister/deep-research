@@ -29,7 +29,8 @@ class TableOfConceptsSearchAgent(Agent):
             name="Table of concepts search agent",
             instructions="""
 Помогите пользователю создать оглавление для его исследовательской работы.
-Обязательно воспользуйся поиском в интернете для составления более релевантного оглавления.
+Воспользуйся поиском в интернете для составления более релевантного оглавления.
+Ходи в интернет не более одного раза! Это дорогая операция.
             """,
             tools=[search_web_tool],
             *args, **kwargs
@@ -37,7 +38,7 @@ class TableOfConceptsSearchAgent(Agent):
 
 
 class TableOfConceptsGuardrailAgent(Agent):
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         super().__init__(
             name="Table of concepts guardrail agent",
             instructions="""
@@ -47,7 +48,8 @@ class TableOfConceptsGuardrailAgent(Agent):
 и он хочет что поменять в оглавлении, то значит он не удовлетворен.
 Если же он говорит, что все хорошо, то он удовлетворен.
             """,
-            output_type=TableOfConceptsGuardrail
+            output_type=TableOfConceptsGuardrail,
+            *args, **kwargs
         )
 
 
@@ -100,11 +102,12 @@ def follow_up_questions_agent_sys_prompt(context, agent):
 
 
 class FollowUpQuestionsAgent(Agent):
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         super().__init__(
             name="Follow up questions agent",
             instructions=follow_up_questions_agent_sys_prompt,
-            output_type=FollowUpQuestions
+            output_type=FollowUpQuestions,
+            *args, **kwargs
         )
 
 
@@ -132,11 +135,12 @@ def hypos_generating_agent_sys_prompt(context, agent):
 
 
 class HyposGeneratingAgent(Agent):
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         super().__init__(
             name="hypos generation agent",
             instructions=hypos_generating_agent_sys_prompt,
-            output_type=NewHypothesis
+            output_type=NewHypothesis,
+            *args, **kwargs
         )
 
 
@@ -175,11 +179,12 @@ def chapter_editor_agent_sys_prompt(context, agent):
 
 
 class ChapterEditorAgent(Agent):
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         super().__init__(
             name="chapter generation agent",
             instructions=chapter_editor_agent_sys_prompt,
-            output_type=ChapterText
+            output_type=ChapterText,
+            *args, **kwargs
         )
 
 
@@ -209,9 +214,10 @@ def chapter_editor_summary_agent_sys_prompt(context, agent):
 
 
 class ChapterEditorSummaryAgent(Agent):
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         super().__init__(
             name="chapter generation agent",
             instructions=chapter_editor_summary_agent_sys_prompt,
-            output_type=ChapterText
+            output_type=ChapterText,
+            *args, **kwargs
         )
